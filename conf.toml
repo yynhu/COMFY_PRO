@@ -1,0 +1,5 @@
+[workflow]
+    1-抠图工作流 = "人像抠图.json"
+    人物主体 = "Portrait"
+    服饰主体 = "Matting"
+

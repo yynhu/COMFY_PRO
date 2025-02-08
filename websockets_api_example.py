@@ -5,8 +5,9 @@ import requests
 import os
 import time
 from loguru import logger
+from confs import confg
+from comfy_utils import find_file_matching_pattern,generate_task,rename_folder,generate_folder
 
-from comfy_utils import find_file_matching_pattern,generate_task,rename_folder
 server_address = "192.168.40.134:8188"
 client_id = str(uuid.uuid4())
 
@@ -24,9 +25,10 @@ def get_history(prompt_id):
     response = requests.get(f"http://{server_address}/history/{prompt_id}")
     return response.json()
 
-def get_images(ws, prompt,save_folder=None):
-    prompt_id = queue_prompt(prompt)['prompt_id']
+def get_images(ws, prompt,save_folder,count):
     current_node = ""
+    folder_path = os.path.join(save_folder, "处理结果")
+    prompt_id = queue_prompt(prompt)['prompt_id']
     while True:
         out = ws.recv()
         if isinstance(out, str):
@@ -45,22 +47,9 @@ def get_images(ws, prompt,save_folder=None):
         else:
             if current_node == 'SaveImageWebsocket':
             # 将二进制流转换为图片并保存
-            #     os.makedirs(prompt_id, exist_ok=True)
-                folder_path = os.path.join(save_folder, "处理结果")
-                os.makedirs(folder_path, exist_ok=True)
+                if count == 0:
+                    generate_folder(folder_path)
                 save_images(folder_path,out[8:])
-    # 根据本地历史进行保存
-    # history = get_history(prompt_id)[prompt_id]
-    # for node_id in history['outputs']:
-    #     node_output = history['outputs'][node_id]
-    #     # images_output = []
-    #     if 'images' in node_output:
-    #         for image in node_output['images']:
-    #             image_data = get_image(image['filename'], image['subfolder'], image['type'])
-    #             # os.makedirs(prompt_id, exist_ok=True)
-    #             folder_path = os.path.join(save_folder, "本地历史记录")
-    #             os.makedirs(folder_path, exist_ok=True)
-    #             save_images(folder_path,image_data,image['filename'])
 
 def interupt_prompt():
     response = requests.post(f"http://{server_address}/interrupt")
@@ -99,18 +88,6 @@ def upload_image(file_path):
         result = data["name"]
         logger.success(f"=========图片上传成功:【{result}】")
         return result
-# content = open("work_flow/人像抠图.json", "r", encoding="utf-8").read()
-# prompt = json.loads(content)
-# filename = upload_image(r"C:\Users\Administrator\Desktop\input.jpg")
-# prompt["6"]["inputs"]["image"] = filename
-# #
-# ws = websocket.WebSocket()
-# ws.connect("ws://{}/ws?clientId={}".format(server_address, client_id))
-# #
-# images = get_images(ws, prompt)
-# ws.close()
-# clear_comfy_cache(free_memory=True)
-# print(get_node_info_by_class("AutoDownloadBiRefNetModel"))
 def upload_folder(folder):
     images = []
     result = list(find_file_matching_pattern(folder, r".*\.(jpg|jpeg|png|JPG|JPEG|PNG)$"))
@@ -122,20 +99,27 @@ def upload_folder(folder):
         images.append(image_name)
     logger.success(f"=========文件夹上传成功:【{folder}】")
     return images
-def single_task_handler(ws,task):
+def single_task_handler(ws,task,folder):
     logger.info(f"开始执行任务：{task}")
     if not os.path.exists(task):
         logger.warning(f"任务文件不存在：{task}")
         return
     images_list = upload_folder(task)
-    json_str = open("work_flow/人像抠图.json", "r", encoding="utf-8").read()
+    if not images_list:
+        return
+    list_ = task.split(folder,1)[1].strip("\\").split("\\")
+    func_name = list_[0]
+    json_str = open(f"work_flow/{confg["workflow"][func_name]}", "r", encoding="utf-8").read()
     prompt = json.loads(json_str)
+    if len(list_) > 2:
+        prompt["2"]["inputs"]["model_name"] = confg["workflow"][list_[-2]]
+    count = 0
     for filename in images_list:
         prompt["6"]["inputs"]["image"] = filename
-        get_images(ws, prompt, task)
+        get_images(ws, prompt, task, count)
+        count = count + 1
     rename_folder(task, "-已完成")
-# upload_folder(r"C:\Users\Administrator\Desktop\立领3")
-# print(generate_task(r"C:\Users\Administrator\Desktop\AI绘图",r"^(?!.*-已完成$).+$"))
+
 def execution_main(folder):
     while True:
         task_list = generate_task(folder, r"^(?!.*-已完成$).+$")
@@ -149,7 +133,7 @@ def execution_main(folder):
             ws = websocket.WebSocket()
             ws.connect("ws://{}/ws?clientId={}".format(server_address, client_id))
             task = task_list.pop()
-            single_task_handler(ws,task)
+            single_task_handler(ws,task,folder)
             ws.close()
 
 

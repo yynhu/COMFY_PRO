@@ -87,7 +87,7 @@ def find_folder_matching_pattern(directory_path, pattern=None):
             with os.scandir(dir_path) as entries:
                 for entry in entries:
                     # 排除回收站文件夹
-                    if entry.is_dir() and entry.name != "#recycle":
+                    if entry.is_dir() and entry.name != "#recycle" and entry.name != "处理结果":
                         # 匹配文件夹名称
                         if pattern and not re.match(pattern, entry.name):
                             continue
@@ -105,20 +105,20 @@ def find_folder_matching_pattern(directory_path, pattern=None):
 
 
 # 生成文件夹,如果存在时,清空文件夹：
-def generate_folder(dir_, name, clear=True):
-    folder_path = os.path.join(dir_, name)
+def generate_folder(folder_path, clear=True):
+    # folder_path = os.path.join(dir_, name)
     try:
         os.makedirs(folder_path, exist_ok=True)
         if clear:
             shutil.rmtree(folder_path)  # 清空文件夹
             os.makedirs(folder_path)  # 重新创建文件夹
     except FileNotFoundError:
-        logger.error(f"路径 {dir_} 不存在，请检查。")
+        logger.error(f"路径 {os.path.dirname(folder_path)} 不存在，请检查。")
     except PermissionError:
         logger.error(f"权限不足，无法操作 {folder_path}。")
     except OSError as e:
         logger.error(f"操作失败: {e}")
-    return folder_path
+    # return folder_path
 
 
 def rename_folder(old_path, new_name, same_folder=True):
