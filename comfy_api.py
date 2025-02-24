@@ -18,15 +18,18 @@ import os
 import time
 from loguru import logger
 from confs import confg
+from log_utils import CustomLogging
 from comfy_utils import (
     find_file_matching_pattern,
     generate_task,
     rename_folder,
-    generate_folder
+    generate_folder,
+    get_desktop
 )
 
 class ImageProcessingClient:
     def __init__(self, server_address="192.168.40.134:8188"):
+        self.logger = CustomLogging("app_log")
         self.server_address = server_address
         self.client_id = str(uuid.uuid4())
 
@@ -93,15 +96,19 @@ class ImageProcessingClient:
 
     def save_image(self, dir_, content, filename=None):
         """保存图片到指定目录"""
-        if filename is None:
-            filename = f"{uuid.uuid4()}.png"
+        if not os.path.exists(dir_):
+            logger.warning(f"目录不存在: {dir_}")
+            return
+        filename =f"{filename}-{int(time.time()*1000)}.png" if filename else f"{uuid.uuid4()}.png"
         with open(os.path.join(dir_, filename), "wb") as f:
             f.write(content)
         logger.success(f"图片已成功保存: {filename}")
+        self.logger.info(f"图片已成功保存: {os.path.join(dir_, filename)}")
 
     def upload_image(self, file_path):
         """上传单张图片"""
         url = f"http://{self.server_address}/upload/image"
+        origin_name = os.path.basename(file_path).split(".",1)[0]
         try:
             with open(file_path, 'rb') as file:
                 files = {'image': (os.path.basename(file_path), file, 'image/jpeg')}
@@ -109,7 +116,7 @@ class ImageProcessingClient:
                 response.raise_for_status()
                 data = response.json()
                 logger.success(f"图片上传成功: {data['name']}")
-                return data["name"]
+                return data["name"],origin_name
         except requests.RequestException as e:
             logger.error(f"上传图片失败: {e}")
             return None
@@ -130,9 +137,14 @@ class ImageProcessingClient:
         logger.success(f"文件夹上传成功: {folder}")
         return images
 
-    def process_images(self, ws, prompt, save_folder, count):
+    def process_images(self, ws, prompt, save_folder,save_name, count):
         """WebSocket 处理图片生成"""
+        if not os.path.exists(save_folder):
+            logger.warning(f"目录不存在: {save_folder}")
+            return
         folder_path = os.path.join(save_folder, "处理结果")
+        if count == 0:
+            generate_folder(folder_path)
         prompt_id = self.queue_prompt(prompt)['prompt_id']
         current_node = ""
 
@@ -148,17 +160,17 @@ class ImageProcessingClient:
                         current_node = prompt[data['node']]['class_type']
             else:
                 if current_node == 'SaveImageWebsocket':
-                    if count == 0:
-                        generate_folder(folder_path)
-                    self.save_image(folder_path, out[8:])
+                    self.save_image(folder_path, out[8:],save_name)
 
     def handle_task(self, ws, task, folder):
         """处理单个任务"""
         logger.info(f"开始任务: {task}")
+        self.logger.info(f"开始任务: {task}")
+
         if not os.path.exists(task):
             logger.warning(f"任务文件不存在: {task}")
             return
-
+        open(f"{task}/【已开始处理，请勿删除】.txt", 'w').close()
         images_list = self.upload_folder(task)
         if not images_list:
             return
@@ -168,21 +180,34 @@ class ImageProcessingClient:
         json_str = open(f"work_flow/{confg['workflow'][func_name]}", "r", encoding="utf-8").read()
         prompt = json.loads(json_str)
 
-        if len(list_) > 2:
-            prompt["2"]["inputs"]["model_name"] = confg["workflow"][list_[-2]]
+        # if len(list_) > 2:
+        #     prompt["2"]["inputs"]["model_name"] = confg["workflow"][list_[-2]]
 
         count = 0
-        for filename in images_list:
-            prompt["6"]["inputs"]["image"] = filename
-            self.process_images(ws, prompt, task, count)
+        for current_tuple in images_list:
+            filename, origin_name = current_tuple
+            match func_name:
+                case "1-抠图工作流":
+                    prompt["6"]["inputs"]["image"] = filename
+                case "2-换脸工作流":
+                    prompt["176"]["inputs"]["image"] = filename
+                case "3-男性换头工作流":
+                    prompt["33"]["inputs"]["image"] = filename
+                case "4-女性换头工作流":
+                    prompt["31"]["inputs"]["image"] = filename
+                    pass
+            if not os.path.exists(task):
+                logger.warning(f"任务文件夹已被删除: {task}")
+                return
+            self.process_images(ws, prompt, task, origin_name, count)
             count += 1
 
-        rename_folder(task, "-已完成")
+        rename_folder(task, f"-已完成【{int(time.time()*1000)}】")
 
     def execute_tasks(self, folder):
         """任务执行主循环"""
         while True:
-            task_list = generate_task(folder, r"^(?!.*-已完成$).+$")
+            task_list = generate_task(folder, r"^(?!.*-已完成).+$")
             if not task_list:
                 logger.info(f"未检测到任务, 5s 后重试...")
                 time.sleep(5)
@@ -199,6 +224,9 @@ class ImageProcessingClient:
 
 
 if __name__ == "__main__":
+    ai_folder = os.path.join(get_desktop(), "AI绘图")
+    os.makedirs(ai_folder, exist_ok=True)
+    log_app = CustomLogging("app_log", os.path.join(ai_folder, "日志.txt"))
     client = ImageProcessingClient()
     client.execute_tasks(r'\\172.16.1.5\74.ai绘图')
 

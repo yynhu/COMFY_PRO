@@ -1,33 +1,7 @@
 {
-  "2": {
-    "inputs": {
-      "model_name": "Portrait",
-      "device": "AUTO"
-    },
-    "class_type": "AutoDownloadBiRefNetModel",
-    "_meta": {
-      "title": "AutoDownloadBiRefNetModel"
-    }
-  },
-  "4": {
-    "inputs": {
-      "model": [
-        "2",
-        0
-      ],
-      "images": [
-        "6",
-        0
-      ]
-    },
-    "class_type": "RembgByBiRefNet",
-    "_meta": {
-      "title": "RembgByBiRefNet"
-    }
-  },
   "6": {
     "inputs": {
-      "image": "1737168912504.png",
+      "image": "2025_01_12_13_25_IMG_5263.JPG",
       "upload": "image"
     },
     "class_type": "LoadImage",
@@ -35,10 +9,43 @@
       "title": "加载图像"
     }
   },
-  "8": {
+  "13": {
+    "inputs": {
+      "model": "BiRefNet-general-epoch_244.pth"
+    },
+    "class_type": "LayerMask: LoadBiRefNetModel",
+    "_meta": {
+      "title": "LayerMask: Load BiRefNet Model(Advance)"
+    }
+  },
+  "17": {
+    "inputs": {
+      "detail_method": "VITMatte",
+      "detail_erode": 4,
+      "detail_dilate": 2,
+      "black_point": 0.01,
+      "white_point": 0.99,
+      "process_detail": true,
+      "device": "cuda",
+      "max_megapixels": 2,
+      "image": [
+        "6",
+        0
+      ],
+      "birefnet_model": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "LayerMask: BiRefNetUltraV2",
+    "_meta": {
+      "title": "BiRefNet Ultra V2"
+    }
+  },
+  "26": {
     "inputs": {
       "images": [
-        "4",
+        "17",
         0
       ]
     },
